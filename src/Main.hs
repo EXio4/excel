@@ -119,8 +119,8 @@ compileJS (Excel ins) =
         go (Stm k) (Ins "AND" xs) = ret k $ go Expr (Ins "AND" xs)
         go (Stm k) (Ins "OR"  xs) = ret k $ go Expr (Ins "OR"  xs)
         go k (Ins "SI" xs) = go k (Ins "IF" xs)
-        go k (Ins "Y"  xs) = go k (Ins "Y" xs)
-        go k (Ins "O"  xs) = go k (Ins "O" xs)
+        go k (Ins "Y"  xs) = go k (Ins "AND" xs)
+        go k (Ins "O"  xs) = go k (Ins "OR" xs)
         go _ err = error ("unexpected " ++ show err)
         
         conv x o y = "(" <> go Expr x <> ") " <> C8.unpack o <> " (" <> go Expr y <> ")"
