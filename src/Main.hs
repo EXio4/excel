@@ -61,7 +61,7 @@ prog = P.string "=" >> Excel <$> ins
 
 
 exc :: ByteString
-exc = "=SI(Y(A1<=B1;B1=2);42;-1)"
+exc = "=IF(AND(A1<=B1;B1=2);42;-1)"
 
 findCells :: Ins -> [ByteString]
 findCells = nub . go where
@@ -90,6 +90,41 @@ compileHS (Excel ins) =
           
           conv x o y = go x <> " " <> C8.unpack o <> " " <> go y
 
+data Res = Expr | Stm Int
+
+compileJS :: ExcelCode -> String
+compileJS (Excel ins) =
+    let cells = findCells ins
+        params =  C8.unpack . C8.intercalate "," $ cells 
+    in "function prog(" <> params <> ") {\n" <> go (Stm 0) ins <> "}"
+    where
+        sp n = replicate ((n+1) * 4) ' '
+        ret k rest = sp k <> "return " <> rest <> ";\n"
+        go :: Res -> Ins -> String
+        go Expr    (Cell x) = C8.unpack x
+        go (Stm k) (Cell x) = ret k $ C8.unpack x
+        go Expr    (Op x "=" y) = conv x "==" y
+        go Expr    (Op x  o  y) = conv x  o   y
+        go (Stm k) (Op x  o  y) = ret k $ go Expr (Op x o y)
+        go Expr    (Literal n) = show n
+        go (Stm k) (Literal n) = ret k $ show n 
+        go (Stm k) (Ins "IF" [c,x,y]) = sp k <> "if (" <> go Expr c <> ") {\n" <> 
+                                                 go (Stm (k+1)) x  <>
+                                                 sp k <> "} else {\n" <> 
+                                                 go (Stm (k+1)) y  <>
+                                                 sp k <> "}\n" 
+        go Expr   (Ins "IF" [c,x,y]) = "(" <> go Expr c <> ") ? (" <> go Expr x <> ") : (" <> go Expr y <> ")"
+        go Expr (Ins "AND" xs) = "(" <> intercalate " && " (map (go Expr) xs) <> ")"
+        go Expr (Ins "OR"  xs) = "(" <> intercalate " || " (map (go Expr) xs) <> ")"
+        go (Stm k) (Ins "AND" xs) = ret k $ go Expr (Ins "AND" xs)
+        go (Stm k) (Ins "OR"  xs) = ret k $ go Expr (Ins "OR"  xs)
+        go k (Ins "SI" xs) = go k (Ins "IF" xs)
+        go k (Ins "Y"  xs) = go k (Ins "Y" xs)
+        go k (Ins "O"  xs) = go k (Ins "O" xs)
+        go _ err = error ("unexpected " ++ show err)
+        
+        conv x o y = "(" <> go Expr x <> ") " <> C8.unpack o <> " (" <> go Expr y <> ")"
+        
 parseExcel :: ByteString -> Either String ExcelCode
 parseExcel bs = P.parseOnly prog bs
 
